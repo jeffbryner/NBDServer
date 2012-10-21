@@ -9,6 +9,10 @@ and compiles via mingw on windows.
 
 .exe provided here is 32 bit, and runs on winxp, win7, win2008.
 
+Video Demo: 
+http://www.youtube.com/watch?v=vKtCYtzteqw
+
+
 Usage: 
 NBDServer.exe v3.0
  -c     Client IP address to accept connections from
