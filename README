@@ -1,0 +1,41 @@
+Windows Network Block Device Server
+2012 Jeff Bryner
+A DFIR/forensic take on nbdsrvr by Folkert van Heusden (http://www.vanheusden.com/windows/nbdsrvr/)
+
+Modified to allow you to specify a whitelist IP address that can connect to the NBD Server,
+defaults to read only access to the partition,
+provide optional debug messages,
+and compiles via mingw on windows.
+
+.exe provided here is 32 bit, and runs on winxp, win7, win2008.
+
+Usage: 
+NBDServer.exe v3.0
+ -c     Client IP address to accept connections from
+ -p     Port to listen on (60000 by default)
+ -f     File to serve ( \\.\PHYSICALDRIVE0: for example)
+ -n     Partition on disk to serve (0 if not specified)
+ -w     Enable writing (disabled by default)
+ -d     Enable debug messages
+ -h     This help text
+
+Example: 
+
+Server at 10.200.1.12:
+#Start server at an administrative cmd.exe session: 
+	NBDServer.exe -c 10.200.1.1 -f \\.\PHYSICALDRIVE0 -n1
+
+Client/Forensic workstation at 10.200.1.1:
+(http://nbd.sourceforge.net/)
+#initialize /dev device
+	modprobe nbd
+	nbd-client 10.1.1.2 60000 /dev/nbd0
+
+#use dev device with any block-oriented tool: 
+	xxd /dev/nbd0 | head -n1
+	0000000: eb52 904e 5446 5320 2020 2000 0208 0000  .R.NTFS    .....
+	0000010: 0000 0000 00f8 0000 3f00 ff00 0008 0000  ........?.......
+#timeline generation with fls:
+	fls -f ntfs -m / -r  /dev/nbd0 | less
+#disconnect
+	nbd-client -d /dev/nbd0
