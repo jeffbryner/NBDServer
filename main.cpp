@@ -19,12 +19,6 @@ bool allowWrite = false;
 string nbdfilename = "";
 int partitionNo=0;
 
-//typedef unsigned int UINT;
-//typedef unsigned char UCHAR;
-//typedef unsigned long ULONG;
-//typedef long double LONGDOUBLE;
-
-
 string
 vformat (const char *fmt, va_list ap)
 {
@@ -513,7 +507,7 @@ int main(int argc, char *argv[])
     ifstream nbdfile;
     int iError;
     
-    while ((ch=getopt(argc,argv,"c:p:f:n:hd")) != EOF)
+    while ((ch=getopt(argc,argv,"c:p:f:n:hwd")) != EOF)
     switch(ch)
     {
         case 'c':
