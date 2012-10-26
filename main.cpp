@@ -93,7 +93,7 @@ void usage(char *prog)
      cout<< prog << " v3.0"<<endl;
      cout<<" -c     Client IP address to accept connections from"<<endl;
      cout<<" -p     Port to listen on (60000 by default)"<<endl;
-     cout<<" -f     File to serve ( \\\\.\\PHYSICALDRIVE0: for example)"<<endl;  //escaping \'s should be read as \\.\:
+     cout<<" -f     File to serve ( \\\\.\\PHYSICALDRIVE0 or \\\\.\\pmem for example)"<<endl;  //escaping \'s should be read as \\.\:
      cout<<" -n     Partition on disk to serve (0 if not specified)"<<endl;
      cout<<" -w     Enable writing (disabled by default)"<<endl;
      cout<<" -d     Enable debug messages"<<endl;
@@ -439,7 +439,7 @@ DWORD WINAPI blockServe(LPVOID data){
 		// calculate current offset
 		cur_offset = add_li(offset, from);
        
-       if (bmemory){
+        if (bmemory){
         //reallocate if reading memory to a valid memory run.
             for(i=0; i<info->number_of_runs; i++) {
                      //debugLog(sformat("Start 0x%08llX - Length 0x%08llX\n", info->runs[i]));
@@ -447,7 +447,9 @@ DWORD WINAPI blockServe(LPVOID data){
                      if ( cur_offset.QuadPart >= info->runs[i].start ) {
                         mem_offset.QuadPart=info->runs[i].start + from.QuadPart;
                      }
+
             }
+            cur_offset.QuadPart=mem_offset.QuadPart;            
         }
 
 
