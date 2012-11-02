@@ -20,6 +20,7 @@ bool allowWrite = false;
 bool bMemory = false;
 string nbdfilename = "";
 int partitionNo=0;
+ofstream debugFile;
 
 //pmem windows memory driver defines
 #define PMEM_DEVICE_NAME "pmem"
@@ -103,18 +104,19 @@ void usage(char *prog)
 
 void debugLog(string message){
     if (debug && !quiet){
-    cerr<<"[*] "<<message<<endl;
+        cerr<<"[*] "<<message<<endl;
+        debugFile<<"[*] "<<message<<endl;
     }
 }
 
 void infoLog(string message){
     if (!quiet){
-    cerr<<"[+] "<<message<<endl;
+        cerr<<"[+] "<<message<<endl;
     }
 }
 void errorLog(string message){
      if (!quiet){
-     cerr<<"[-] "<<message<<endl;
+        cerr<<"[-] "<<message<<endl;
      }
 }
      
@@ -228,6 +230,8 @@ BOOL getu32(SOCKET sh, ULONG *val)
 	return TRUE;
 }
 
+
+
 BOOL putu32(SOCKET sh, ULONG value)
 {
 	UCHAR buffer[4];
@@ -252,7 +256,6 @@ DWORD WINAPI blockServe(LPVOID data){
 	LARGE_INTEGER offset, fsize;
 	const char *filename;
 	filename=nbdfilename.c_str();
-	bool bmemory=false;
 
     //memory read structures
     char info_buffer[4096];
@@ -326,16 +329,20 @@ DWORD WINAPI blockServe(LPVOID data){
             };
 
             //assume we start at the beginning of the first run.
-            offset.QuadPart=info->runs[0].start;
+            //offset.QuadPart=info->runs[0].start;
             //fsize.QuadPart=info->runs[0].length; 
             
-                        
+            //start at the beginning of 'memory'
+            offset.QuadPart=0;
+
+            //find memory size from a combination of the runs and the padding we will perform later.                        
             debugLog(sformat("CR3: 0x%010llX\n %d memory ranges:", info->cr3,info->number_of_runs));
+            __int64 fsizeoffset=0;
             for(i=0; i<info->number_of_runs; i++) {
                      debugLog(sformat("Start 0x%08llX - Length 0x%08llX", info->runs[i]));
-                     fsize.QuadPart+=info->runs[i].length; 
-            };
-             
+                     fsize.QuadPart+=(info->runs[i].start-fsizeoffset)+info->runs[i].length; 
+                     fsizeoffset=info->runs[i].start+info->runs[i].length;
+            };             
         }
 
    }
@@ -420,13 +427,14 @@ DWORD WINAPI blockServe(LPVOID data){
 			break;
 		}
 
-
+        //len=ntohl(len);
+        
 		handle[8] = 0x00;
-		debugLog(sformat("Magic:    %lx", magic));
+//		debugLog(sformat("Magic:    %lx", magic));
 		debugLog(sformat("Offset:   %ld,%ld (%lx%lx)", from.HighPart, from.LowPart, from.HighPart, from.LowPart));
 		debugLog(sformat("Len:      %ld", len));
 		//debugLog(sformat("Handle:   %s\n", handle));
-		debugLog(sformat("Req.type: %ld (%s)\n", type, type?"write":"read"));
+//		debugLog(sformat("Req.type: %ld (%s)\n", type, type?"write":"read"));
 
 
 		// verify protocol
@@ -439,22 +447,34 @@ DWORD WINAPI blockServe(LPVOID data){
 		// calculate current offset
 		cur_offset = add_li(offset, from);
        
-        if (bmemory){
-        //reallocate if reading memory to a valid memory run.
-            for(i=0; i<info->number_of_runs; i++) {
-                     //debugLog(sformat("Start 0x%08llX - Length 0x%08llX\n", info->runs[i]));
-                     //fsize.QuadPart+=info->runs[i].length; 
-                     if ( cur_offset.QuadPart >= info->runs[i].start ) {
-                        mem_offset.QuadPart=info->runs[i].start + from.QuadPart;
-                     }
+//        if (bMemory){
+//            
+//            //if the region requested is in a valid memory run, read the pmem memory file
+//            //if not spit out padding
 
-            }
-            cur_offset.QuadPart=mem_offset.QuadPart;            
-        }
+//    		           
+//            //reallocate if reading memory to a valid memory run.
+//            for(i=0; i<info->number_of_runs; i++) {
+//                     //debugLog(sformat("Start 0x%08llX - Length 0x%08llX\n", info->runs[i]));
+//                     //fsize.QuadPart+=info->runs[i].length; 
+//                     if ( cur_offset.QuadPart >= info->runs[i].start ) {
+//                        mem_offset.QuadPart=info->runs[i].start;
+//                        debugLog(sformat("ratchet: %lld",mem_offset.QuadPart));
+//                     }
+
+//            }
+//            if (from.QuadPart>mem_offset.QuadPart){
+//                cur_offset.QuadPart=from.QuadPart - mem_offset.QuadPart;
+//            }else{
+//                cur_offset.QuadPart=mem_offset.QuadPart + from.QuadPart;
+//            }
+//            
+//            debugLog(sformat("offset: %lld",cur_offset.QuadPart));
+//        }
 
 
 		// seek to 'from'
-		if (SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
+		if (!bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
 		{
 			errorLog(sformat("Error seeking in file %s to position %d,%d (%x%x): %lu\n", filename,
 				cur_offset.HighPart, cur_offset.LowPart, cur_offset.HighPart, cur_offset.LowPart, GetLastError()));
@@ -486,7 +506,7 @@ DWORD WINAPI blockServe(LPVOID data){
 					break;
 
 				// write to file;
-				if (allowWrite){
+				if (allowWrite and !bMemory){
     				if (WriteFile(fh, buffer, nb, &dummy, NULL) == 0)
     				{
     					errorLog(sformat("Failed to write to %s: %lu\n", filename, GetLastError()));
@@ -517,7 +537,7 @@ DWORD WINAPI blockServe(LPVOID data){
 				break;
 			}
 		}
-		else if (type == 0)
+		else if (type == 0)   //read
 		{
 			// send 'ack'
 			if (putu32(sockh, 0x67446698) == FALSE ||
@@ -531,22 +551,60 @@ DWORD WINAPI blockServe(LPVOID data){
 			while(len > 0)
 			{
 				DWORD dummy;
-				UCHAR buffer[32768];
-				int nb = min((const int)len, (const int)32768);
+				//UCHAR buffer[32768];
+				UCHAR buffer[1024];
+				//int nb = min((const int)len, (const int)32768);
+				int nb = min((const int)len, (const int)1024);
 				int pnt = 0;
+				bool bPad= true;
 
-				// read nb to buffer;
-				if (ReadFile(fh, buffer, nb, &dummy, NULL) == 0)
-				{
-					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
-					break;
-				}
-				if (dummy != nb)
-				{
-					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
-					break;
+                //are we padding or reading memory based on our 'position' in the memory 'file'				
+				if (bMemory){
+                    for(i=0; i<info->number_of_runs; i++) {
+                        if ( (info->runs[i].start <= cur_offset.QuadPart) && (nb<=info->runs[i].length)) {
+                            bPad=false;  //really read the mem driver
+                            //debugLog(sformat("no pad for : %lld, %d ",cur_offset.QuadPart,nb));
+                        }
+                    }				    
 				}
 
+                if (bMemory){
+                    if (bPad){
+                        memset(&buffer,0x00,nb);
+                        debugLog(sformat("Sending pad: %lld,%d",cur_offset.QuadPart,nb));
+                    }else{
+                        debugLog(sformat("Sending mem: %lld,%d",cur_offset.QuadPart,nb));
+                		// seek to 'from'
+                		if (SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
+                		{
+                			errorLog(sformat("Error seeking in file %s to position %d,%d (%x%x): %lu\n", filename,
+                				cur_offset.HighPart, cur_offset.LowPart, cur_offset.HighPart, cur_offset.LowPart, GetLastError()));
+                			err = error_mapper(GetLastError());
+                			break;
+                		}                        
+        				if (ReadFile(fh, buffer, nb, &dummy, NULL) == 0)
+        				{
+        					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
+        					break;
+        				}
+                                                
+                    }
+                    cur_offset.QuadPart+=nb;
+                }else{
+                    
+    				// read nb to buffer;
+    				if (ReadFile(fh, buffer, nb, &dummy, NULL) == 0)
+    				{
+    					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
+    					break;
+    				}
+    				if (dummy != nb)
+    				{
+    					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
+    					break;
+    				}
+                }
+                
 				// send through socket
 				if (WRITE(sockh, buffer, nb) != nb) // connection was closed
 				{
@@ -634,6 +692,11 @@ int main(int argc, char *argv[])
             usage(argv[0]);
             return(-1);
     }
+    
+    if (debug){
+        debugFile.open("debug.log");
+    }
+    
     found=nbdfilename.find("pmem");
     if (found!=string::npos){
        bMemory=true;
@@ -724,6 +787,9 @@ int main(int argc, char *argv[])
     
     }
 	
+	if (debug){
+	    debugFile.close();
+	}
 	
 	
 	
