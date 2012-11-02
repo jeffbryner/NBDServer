@@ -17,7 +17,7 @@ Usage:
 NBDServer.exe v3.0
  -c     Client IP address to accept connections from
  -p     Port to listen on (60000 by default)
- -f     File to serve ( \\.\PHYSICALDRIVE0: for example)
+ -f     File to serve ( \\.\PHYSICALDRIVE0 or \\.\pmem for example)
  -n     Partition on disk to serve (0 if not specified)
  -w     Enable writing (disabled by default)
  -d     Enable debug messages
@@ -43,3 +43,5 @@ Client/Forensic workstation at 10.200.1.1:
 	fls -f ntfs -m / -r  /dev/nbd0 | less
 #disconnect
 	nbd-client -d /dev/nbd0
+
+#for Memory example see MEMReadme.txt
