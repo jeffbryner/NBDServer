@@ -2,10 +2,12 @@ Windows Network Block Device Server
 2012 Jeff Bryner
 A DFIR/forensic take on nbdsrvr by Folkert van Heusden (http://www.vanheusden.com/windows/nbdsrvr/)
 
-Modified to allow you to specify a whitelist IP address that can connect to the NBD Server,
-defaults to read only access to the partition,
-provide optional debug messages,
-and compiles via mingw on windows.
+Modified to 
+1) allow you to specify a whitelist IP address that can connect to the NBD Server
+2) defaults to read only access to the partition
+3) provide access to disk or memory
+3) provide optional debug messages
+4) compiles via mingw on windows
 
 .exe provided here is 32 bit, and runs on winxp, win7, win2008.
 
