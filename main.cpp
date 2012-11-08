@@ -273,7 +273,7 @@ DWORD WINAPI blockServe(LPVOID data){
          fh = CreateFile(filename, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }     
     else{
-    	 fh = CreateFile(filename, GENERIC_READ , 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    	 fh = CreateFile(filename, GENERIC_READ |GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }
     
 	if (fh == INVALID_HANDLE_VALUE)
@@ -286,7 +286,7 @@ DWORD WINAPI blockServe(LPVOID data){
 	memset(&offset, 0x00, sizeof(offset));
 	memset(&fsize, 0x00, sizeof(fsize));
 	
-	//disk, memory or file?
+	//disk, volume, memory or file?
 	if (strnicmp(filename, "\\\\.\\PHYSICALDRIVE", 17) == 0)	/* disk */
 	{
 		DWORD dummy2;
@@ -312,6 +312,25 @@ DWORD WINAPI blockServe(LPVOID data){
 		debugLog(sformat("Offset: %ld,%ld (%lx%lx)\n", offset.HighPart, offset.LowPart, offset.HighPart, offset.LowPart));
 		debugLog(sformat("Length: %ld,%ld (%lx%lx)\n", fsize.HighPart, fsize.LowPart, fsize.HighPart, fsize.LowPart));
 
+	}
+	else if (strnicmp(filename, "\\\\.\\", 4 ) == 0) //assume a volume name like \\.\C: or \\.\HarddiskVolume1 
+	{
+		DWORD dummy2;
+		char *dummy = (char *)malloc(4096);
+		GET_LENGTH_INFORMATION *gli = (GET_LENGTH_INFORMATION *)dummy;
+		if (!dummy)
+		{
+			errorLog("Out of memory!");
+			goto error;
+		}
+		if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, (void *)gli, 4096, &dummy2, NULL) == FALSE)
+		{
+			errorLog(sformat("Cannot obtain volume layout: %lu\n", GetLastError()));
+			goto error;
+		}
+
+		fsize  = gli -> Length;
+		
 	}
 	else if (bMemory){
          DWORD size;
@@ -346,7 +365,7 @@ DWORD WINAPI blockServe(LPVOID data){
         }
 
    }
-	else													/* file */
+	else													/* plain file */
 	{
 		fsize.LowPart = GetFileSize(fh, (DWORD *)&fsize.HighPart);
 		if (fsize.LowPart == 0xFFFFFFFF)
@@ -447,34 +466,8 @@ DWORD WINAPI blockServe(LPVOID data){
 		// calculate current offset
 		cur_offset = add_li(offset, from);
        
-//        if (bMemory){
-//            
-//            //if the region requested is in a valid memory run, read the pmem memory file
-//            //if not spit out padding
-
-//    		           
-//            //reallocate if reading memory to a valid memory run.
-//            for(i=0; i<info->number_of_runs; i++) {
-//                     //debugLog(sformat("Start 0x%08llX - Length 0x%08llX\n", info->runs[i]));
-//                     //fsize.QuadPart+=info->runs[i].length; 
-//                     if ( cur_offset.QuadPart >= info->runs[i].start ) {
-//                        mem_offset.QuadPart=info->runs[i].start;
-//                        debugLog(sformat("ratchet: %lld",mem_offset.QuadPart));
-//                     }
-
-//            }
-//            if (from.QuadPart>mem_offset.QuadPart){
-//                cur_offset.QuadPart=from.QuadPart - mem_offset.QuadPart;
-//            }else{
-//                cur_offset.QuadPart=mem_offset.QuadPart + from.QuadPart;
-//            }
-//            
-//            debugLog(sformat("offset: %lld",cur_offset.QuadPart));
-//        }
-
-
 		// seek to 'from'
-		if (!bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
+		if (type!=2 && !bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
 		{
 			errorLog(sformat("Error seeking in file %s to position %d,%d (%x%x): %lu\n", filename,
 				cur_offset.HighPart, cur_offset.LowPart, cur_offset.HighPart, cur_offset.LowPart, GetLastError()));

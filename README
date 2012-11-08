@@ -23,7 +23,17 @@ NBDServer.exe v3.0
  -n     Partition on disk to serve (0 if not specified)
  -w     Enable writing (disabled by default)
  -d     Enable debug messages
+ -q     Be Quiet..no messages
  -h     This help text
+
+ -f option supports names like the following: 
+  \\.\PHYSICALDRIVE0    raw drive partition access along with -n option
+  \\.\C:                volume access (no need for -n option)
+  \\.\HarddiskVolume1   volume access (no need for -n option)
+  afile.dd              serve up the contents of 'afile.dd' via nbd.
+  \\.\pmem              access the pmem memory driver from volatility  
+ 
+
 
 Example: 
 
@@ -43,6 +53,10 @@ Client/Forensic workstation at 10.200.1.1:
 	0000010: 0000 0000 00f8 0000 3f00 ff00 0008 0000  ........?.......
 #timeline generation with fls:
 	fls -f ntfs -m / -r  /dev/nbd0 | less
+#mount it if needed
+    mount -t ntfs -o ro /dev/nbd1 /mnt/windows
+#unmount it
+    umount /mnt/windows            
 #disconnect
 	nbd-client -d /dev/nbd0
 
