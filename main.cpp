@@ -313,7 +313,7 @@ DWORD WINAPI blockServe(LPVOID data){
 		debugLog(sformat("Length: %ld,%ld (%lx%lx)\n", fsize.HighPart, fsize.LowPart, fsize.HighPart, fsize.LowPart));
 
 	}
-	else if (strnicmp(filename, "\\\\.\\", 4 ) == 0) //assume a volume name like \\.\C: or \\.\HarddiskVolume1 
+	else if (strnicmp(filename, "\\\\.\\", 4 ) == 0 && !bMemory ) //assume a volume name like \\.\C: or \\.\HarddiskVolume1 
 	{
 		DWORD dummy2;
 		char *dummy = (char *)malloc(4096);
