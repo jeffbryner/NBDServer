@@ -1,36 +1,43 @@
 Windows:
-	Install pmem driver: 
-	from: 
-		http://code.google.com/p/volatility/source/browse/branches/scudette/tools/windows/winpmem/binaries/
-	download either: 
-		amd64/winpmem_64.sys
-		i386/winpmem_32.sys
-	depending on your target platform.
-	
-	
+    Automatic driver loading: 
+	    Get pmem executable: 
+            http://code.google.com/p/volatility/source/browse/branches/scudette/tools/windows/winpmem/#winpmem%2Fexecutable%2FRelease
+        Load driver: 
+            winpmem_1.4.exe -l
+        
+    
 
-	
-	#create a windows service using sc: 
-	#(note the spaces after the parameters ex: type= kernel)
-	sc create pmem type= kernel start= demand binPath= "c:\nbdserver\winpmem_32.sys"
-	[SC] CreateService SUCCESS	
-	
-	#Check the config
-	sc qc pmem
-	[SC] GetServiceConfig SUCCESS
+    Manually loading the driver: 
+	    from: 
+		    http://code.google.com/p/volatility/source/browse/branches/scudette/tools/windows/winpmem/binaries/
+	    download either: 
+		    winpmem_x64.sys
+		    winpmem_x86.sys
+	    depending on your target platform.
 
-	SERVICE_NAME: pmem
-        	TYPE               : 1   KERNEL_DRIVER
-        	START_TYPE         : 3   DEMAND_START
-        	ERROR_CONTROL      : 0   IGNORE
-        	BINARY_PATH_NAME   : \??\C:\nbdserver\winpmem_32.sys
-        	LOAD_ORDER_GROUP   :
-        	TAG                : 0
-        	DISPLAY_NAME       : pmem
-        	DEPENDENCIES       :
-        	SERVICE_START_NAME :	
-	
-	#if installed, make sure it's running: 
+	    #create a windows service using sc: 
+	    #(note the spaces after the parameters ex: type= kernel)
+	    sc create pmem type= kernel start= demand binPath= "c:\nbdserver\winpmem_32.sys"
+	    [SC] CreateService SUCCESS	
+
+	    #Check the config
+	    sc qc pmem
+	    [SC] GetServiceConfig SUCCESS
+
+	    SERVICE_NAME: pmem
+        	    TYPE               : 1   KERNEL_DRIVER
+        	    START_TYPE         : 3   DEMAND_START
+        	    ERROR_CONTROL      : 0   IGNORE
+        	    BINARY_PATH_NAME   : \??\C:\nbdserver\winpmem_32.sys
+        	    LOAD_ORDER_GROUP   :
+        	    TAG                : 0
+        	    DISPLAY_NAME       : pmem
+        	    DEPENDENCIES       :
+        	    SERVICE_START_NAME :	
+
+
+Once installed:	
+	# make sure it's running: 
 	sc query pmem
 	sc start pmem
 
