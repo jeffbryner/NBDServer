@@ -303,10 +303,20 @@ DWORD WINAPI blockServe(LPVOID data){
 			goto error;
 		}
 
-		// find starting offset of partition
-		offset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
-		fsize  = (dli -> PartitionEntry[partitionNo]).PartitionLength;
-
+		if (partitionNo==-1){
+			int i;
+			for (i=0;i < (dli -> PartitionCount);i++){
+				fsize.QuadPart += (dli -> PartitionEntry[i]).PartitionLength.QuadPart;
+			}
+			//set offset to 0 and length to length of all partitions
+			offset = (dli -> PartitionEntry[0]).StartingOffset;
+			
+		}else{
+		
+			// find starting offset of partition
+			offset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
+			fsize  = (dli -> PartitionEntry[partitionNo]).PartitionLength;
+		}
 
 		debugLog(sformat("Partition %d is of type %02x\n", partitionNo, (dli -> PartitionEntry[partitionNo]).PartitionType));
 		debugLog(sformat("Offset: %ld,%ld (%lx%lx)\n", offset.HighPart, offset.LowPart, offset.HighPart, offset.LowPart));
@@ -673,7 +683,12 @@ int main(int argc, char *argv[])
             port=atoi(optarg);
             break;
         case 'n':
-            partitionNo=atoi(optarg);
+			//grab a particular partition, or all partitions
+			if (strnicmp(strdup(optarg),"all",3)==0){
+				partitionNo=-1;
+			}else{
+				partitionNo=atoi(optarg);
+			}            
             break;
         case 'f':
             nbdfilename=optarg;
