@@ -303,16 +303,23 @@ DWORD WINAPI blockServe(LPVOID data){
 			goto error;
 		}
 
+		//dli->PartitionCount is stupid and answers 4 if MBR..count array instead. 
+		
+		int partitionCount=0;
+		partitionCount=sizeof(dli->PartitionEntry) / sizeof(*dli->PartitionEntry);
+		debugLog(sformat("Partitions %d\n",partitionCount));
 		if (partitionNo==-1){
 			int i;
-			for (i=0;i < (dli -> PartitionCount);i++){
+			for (i=0;i <=partitionCount;i++){
 				fsize.QuadPart += (dli -> PartitionEntry[i]).PartitionLength.QuadPart;
 			}
+			debugLog("Gathered length from all partitions\n");
 			//set offset to 0 and length to length of all partitions
 			offset = (dli -> PartitionEntry[0]).StartingOffset;
 			
 		}else{
 		
+			debugLog(sformat("Targeting only partition %d\n",partitionNo));
 			// find starting offset of partition
 			offset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
 			fsize  = (dli -> PartitionEntry[partitionNo]).PartitionLength;
