@@ -1,3 +1,6 @@
+// minimum system requirement: Windows 2000: (enables GetFileSizeEx)
+#define _WIN32_WINNT 0x0500
+
 #include <string.h>
 #include <cstdlib>
 #include <iostream>
@@ -119,7 +122,7 @@ void errorLog(string message){
         cerr<<"[-] "<<message<<endl;
      }
 }
-     
+
 int error_mapper(DWORD winerr)
 {
 	switch(winerr){
@@ -156,19 +159,9 @@ int error_mapper(DWORD winerr)
 
 LARGE_INTEGER add_li(LARGE_INTEGER i1, LARGE_INTEGER i2)
 {
-	LARGE_INTEGER dummy={0};
-
-	dummy = i1;
-
-	dummy.LowPart += i2.LowPart;
-	if (dummy.LowPart <= i1.LowPart && i2.LowPart > 0)
-	{
-		dummy.HighPart++;
-	}
-
-	dummy.HighPart += i2.HighPart;
-
-	return dummy;
+	LARGE_INTEGER res;
+	res.QuadPart = i1.QuadPart + i2.QuadPart;
+	return res;
 }
 
 int READ(SOCKET sh, UCHAR *whereto, int howmuch)
@@ -185,7 +178,7 @@ int READ(SOCKET sh, UCHAR *whereto, int howmuch)
 			break;
 		if (nread == SOCKET_ERROR)
 		{
-			errorLog(sformat("Connection dropped. Error: %lu\n", WSAGetLastError()));
+			errorLog(sformat("Connection dropped. Error: %u\n", WSAGetLastError()));
 			break;
 		}
 
@@ -207,7 +200,7 @@ int WRITE(SOCKET sh, UCHAR *wherefrom, int howmuch)
 			break;
 		if (nwritten == SOCKET_ERROR)
 		{
-			errorLog(sformat("Connection dropped. Error: %lu\n", WSAGetLastError()));
+			errorLog(sformat("Connection dropped. Error: %u\n", WSAGetLastError()));
 			break;
 		}
 
@@ -253,8 +246,7 @@ BOOL putu32(SOCKET sh, ULONG value)
 DWORD WINAPI blockServe(LPVOID data){
 	SOCKET sockh = (SOCKET)data;
 	HANDLE fh;
-	LARGE_INTEGER foffset={0};
-	LARGE_INTEGER fsize={0};
+	LARGE_INTEGER offset, fsize;
 	const char *filename;
 	filename=nbdfilename.c_str();
 
@@ -269,28 +261,24 @@ DWORD WINAPI blockServe(LPVOID data){
     if (bMemory){
        debugLog("opening memory");
        fh=CreateFile(filename,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
-    }             
-    else if (allowWrite){
-    	debugLog("opening for writing");
-        fh = CreateFile(filename, GENERIC_READ , FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-         
-    }     
-    else{
-    	debugLog("opening read-only");
-    	fh = CreateFile(filename, GENERIC_READ , FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    	
     }
-    
+    else if (allowWrite){
+         fh = CreateFile(filename, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
+    else{
+    	 fh = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
+
 	if (fh == INVALID_HANDLE_VALUE)
 	{
-		errorLog(sformat("Error opening file %s: %lu\n", filename, GetLastError()));
+		errorLog(sformat("Error opening file %s: %u\n", filename, GetLastError()));
 		goto error;
 	}
 
 	// find length of file or starting offset of partition
-	//memset(&offset, 0x00, sizeof(offset));
-	//memset(&fsize, 0x00, sizeof(fsize));
-	
+	memset(&offset, 0x00, sizeof(offset));
+	memset(&fsize, 0x00, sizeof(fsize));
+
 	//disk, volume, memory or file?
 	if (strnicmp(filename, "\\\\.\\PHYSICALDRIVE", 17) == 0)	/* disk */
 	{
@@ -304,12 +292,12 @@ DWORD WINAPI blockServe(LPVOID data){
 		}
 		if (DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_LAYOUT, NULL, 0, (void *)dli, 4096, &dummy2, NULL) == FALSE)
 		{
-			errorLog(sformat("Cannot obtain drive layout: %lu\n", GetLastError()));
+			errorLog(sformat("Cannot obtain drive layout: %u\n", GetLastError()));
 			goto error;
 		}
 
-		//dli->PartitionCount is stupid and answers 4 if MBR..count array instead. 
-		
+		//dli->PartitionCount is stupid and answers 4 if MBR..count array instead.
+
 		int partitionCount=0;
 		partitionCount=sizeof(dli->PartitionEntry) / sizeof(*dli->PartitionEntry);
 		debugLog(sformat("Partitions %d\n",partitionCount));
@@ -320,21 +308,17 @@ DWORD WINAPI blockServe(LPVOID data){
 			}
 			debugLog("Gathered length from all partitions\n");
 			//set offset to 0 and length to length of all partitions
-			foffset = (dli -> PartitionEntry[0]).StartingOffset;
-			
+			offset = (dli -> PartitionEntry[0]).StartingOffset;
 		}else{
-		
 			debugLog(sformat("Targeting only partition %d\n",partitionNo));
 			// find starting offset of partition
-			foffset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
+			offset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
 			fsize  = (dli -> PartitionEntry[partitionNo]).PartitionLength;
 		}
 
 		debugLog(sformat("Partition %d is of type %02x\n", partitionNo, (dli -> PartitionEntry[partitionNo]).PartitionType));
-		//debugLog(sformat("Offset: %ld,%ld (%lx %lx)\n", offset.HighPart, offset.LowPart, offset.HighPart, offset.LowPart));
-		//debugLog(sformat("Length: %ld,%ld (%lx %lx)\n", fsize.HighPart, fsize.LowPart, fsize.HighPart, fsize.LowPart));
-		debugLog(sformat("Offset: %lld,\n",foffset.QuadPart));
-		debugLog(sformat("Length: %lld,\n",fsize.QuadPart));
+		debugLog(sformat("Offset: %lld (%llx)\n", offset.QuadPart, offset.QuadPart));
+		debugLog(sformat("Length: %lld (%llx)\n", fsize.QuadPart,  fsize.QuadPart));
 
 	}
 	else if (strnicmp(filename, "\\\\.\\", 4 ) == 0 && !bMemory ) //assume a volume name like \\.\C: or \\.\HarddiskVolume1 
@@ -349,12 +333,11 @@ DWORD WINAPI blockServe(LPVOID data){
 		}
 		if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, (void *)gli, 4096, &dummy2, NULL) == FALSE)
 		{
-			errorLog(sformat("Cannot obtain volume layout: %lu\n", GetLastError()));
+			errorLog(sformat("Cannot obtain volume layout: %u\n", GetLastError()));
 			goto error;
 		}
 
 		fsize  = gli -> Length;
-		
 	}
 	else if (bMemory){
          DWORD size;
@@ -373,28 +356,26 @@ DWORD WINAPI blockServe(LPVOID data){
 
             //assume we start at the beginning of the first run.
             //offset.QuadPart=info->runs[0].start;
-            //fsize.QuadPart=info->runs[0].length; 
-            
-            //start at the beginning of 'memory'
-            foffset.QuadPart=0;
+            //fsize.QuadPart=info->runs[0].length;
 
-            //find memory size from a combination of the runs and the padding we will perform later.                        
+            //start at the beginning of 'memory'
+            offset.QuadPart=0;
+
+            //find memory size from a combination of the runs and the padding we will perform later.
             debugLog(sformat("CR3: 0x%010llX\n %d memory ranges:", info->cr3,info->number_of_runs));
             __int64 fsizeoffset=0;
             for(i=0; i<info->number_of_runs; i++) {
                      debugLog(sformat("Start 0x%08llX - Length 0x%08llX", info->runs[i]));
-                     fsize.QuadPart+=(info->runs[i].start-fsizeoffset)+info->runs[i].length; 
+                     fsize.QuadPart+=(info->runs[i].start-fsizeoffset)+info->runs[i].length;
                      fsizeoffset=info->runs[i].start+info->runs[i].length;
-            };             
+            };
         }
 
    }
 	else													/* plain file */
 	{
-		fsize.LowPart = GetFileSize(fh, (DWORD *)&fsize.HighPart);
-		if (fsize.LowPart == 0xFFFFFFFF)
-		{
-			errorLog("Failed to obtain filesize info!");
+		if (GetFileSizeEx(fh, &fsize) == 0) {
+			errorLog(sformat("Failed to obtain filesize info: %u", GetLastError()));
 			goto error;
 		}
 	}
@@ -438,7 +419,7 @@ DWORD WINAPI blockServe(LPVOID data){
 		errorLog("Failed to send filesize.");
 		goto error;
 	}
-	
+
 	// send a couple of zeros */
 	unsigned char buffer[128];
 	memset(buffer, 0x00, 128);
@@ -456,8 +437,7 @@ DWORD WINAPI blockServe(LPVOID data){
 		UCHAR handle[9];
 		ULONG magic, len, type;
 		LARGE_INTEGER from;
-		LARGE_INTEGER cur_offset={0};
-		LARGE_INTEGER mem_offset={0};
+		LARGE_INTEGER cur_offset,mem_offset;
 		int err = 0;
 
 		if (getu32(sockh, &magic) == FALSE ||	// 0x12560953
@@ -472,14 +452,13 @@ DWORD WINAPI blockServe(LPVOID data){
 		}
 
         //len=ntohl(len);
-        
+
 		handle[8] = 0x00;
 //		debugLog(sformat("Magic:    %lx", magic));
-		//debugLog(sformat("Offset:   %ld,%ld (%lx%lx)", from.HighPart, from.LowPart, from.HighPart, from.LowPart));
-		debugLog(sformat("Request: %s From: %lld Len: %ld\n",type?"write:":"read",from.QuadPart,len));
-		//debugLog(sformat("Len:      %ld", len));
+		debugLog(sformat("Offset:   %lld (%llx)", from.QuadPart, from.QuadPart));
+		debugLog(sformat("Len:      %u", len));
 		//debugLog(sformat("Handle:   %s\n", handle));
-		//debugLog(sformat("Req.type: %ld (%s)\n", type, type?"write":"read"));
+		debugLog(sformat("Req.type: %d (%s)", type, (type==1)?"write":(type==0)?"read":"?"));
 
 
 		// verify protocol
@@ -490,14 +469,13 @@ DWORD WINAPI blockServe(LPVOID data){
 		}
 
 		// calculate current offset
-		cur_offset = add_li(foffset, from);
-       
+		cur_offset = add_li(offset, from);
+
 		// seek to 'from'
-		//if (type!=2 && !bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)		
-		if (type!=2 && !bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == INVALID_SET_FILE_POINTER)		
+		if (type!=2 && !bMemory && SetFilePointerEx(fh, cur_offset, NULL, FILE_BEGIN) == 0)
 		{
-			errorLog(sformat("Error seeking in file %s to position %d,%d (%x%x): %lu\n", filename,
-				cur_offset.HighPart, cur_offset.LowPart, cur_offset.HighPart, cur_offset.LowPart, GetLastError()));
+			errorLog(sformat("Error seeking in file %s to position %lld (%llx): %u\n", filename,
+				cur_offset.QuadPart, cur_offset.QuadPart, GetLastError()));
 			err = error_mapper(GetLastError());
 		}
 
@@ -516,52 +494,52 @@ DWORD WINAPI blockServe(LPVOID data){
 		}
 		else if (type == 1) // write
 		{
+			UCHAR buffer[32768];
+			const int writeBlockSize = 512;
+			const int bufsize = sizeof buffer;
+			int buflen = 0; // currently in buffer
 			while(len > 0)
 			{
-				DWORD dummy;
-				UCHAR buffer[32768];
-				memset(buffer, 0x00, sizeof(buffer));
-				// read from socket
-				int nb = recv(sockh, (char *)buffer, min((const int)len, (const int)32768), 0);
-				if (nb == 0)
-					break;
+				// read from socket (add to buffer)
+				int nb = min((const int)len, (const int)(bufsize-buflen));
+				debugLog(sformat("recv max %d bytes", nb));
+				nb = recv(sockh, (char*)(&buffer[buflen]), nb, 0);
+				buflen += nb;
+				len -= nb;
 
 				// write to file;
-				if (allowWrite and !bMemory){
-					debugLog(sformat("Writing %ld bytes to %s \n",nb, filename));
-					if (nb%512==0){
-						//block size is divisible by 512, ok to just write it.
-	    				if (WriteFile(fh, buffer, nb, &dummy, NULL) == 0)
-	    				{
-	    					errorLog(sformat("Failed to write %ld bytes to %s: %lu\n", nb,filename, GetLastError()));
-	    					err = error_mapper(GetLastError());
-	    					break;
-	    				}
-	    				if (dummy != (DWORD) nb)
-	    				{
-	    					errorLog(sformat("Failed to write to %s: %d (written: %d, requested to write: %lu)\n", filename, GetLastError(), dummy, nb));
-	    					break;
-	    				}	    										
+				if (!allowWrite or bMemory){
+					errorLog("ignoring write request");
+				} else if (buflen >= writeBlockSize) {
+					DWORD bWritten;
+					nb = buflen & ~(writeBlockSize-1); //floor to previous 512
+					debugLog(sformat("WriteFile %d bytes of %d bytes in buffer", nb, buflen));
+					if (WriteFile(fh, buffer, nb, &bWritten, NULL) == 0)
+					{
+						errorLog(sformat("Failed to write %d bytes to %s: %u\n", nb, filename, GetLastError()));
+						err = error_mapper(GetLastError());
+						break;
 					}
-					else{
-						//block size is odd, write all of the buffer
-	    				if (WriteFile(fh, buffer, sizeof(buffer), &dummy, NULL) == 0)
-	    				{
-	    					errorLog(sformat("Failed to write %ld bytes to %s: %lu\n", nb,filename, GetLastError()));
-	    					err = error_mapper(GetLastError());
-	    					break;
-	    				}
-	    				if (dummy != (DWORD) sizeof(buffer))
-	    				{
-	    					errorLog(sformat("Failed to write padded buffer to %s: %d (written: %d, requested to write: %lu)\n", filename, GetLastError(), dummy, nb));
-	    					break;
-	    				}	    										
-						
-						
-					}
-                }
 
-				len -= nb;
+					// adjust buffer (pending data)
+					if (buflen > bWritten) {
+						memmove(&buffer[0], &buffer[bWritten], buflen-bWritten);
+					}
+					buflen -= bWritten;
+				}
+
+				if (len==0 && buflen>0) {
+					// obviously the data read is not divideable by 512. to avoid an infinite loop, we try
+					// to write down the rest here
+					DWORD bWritten;
+					if (WriteFile(fh, buffer, buflen, &bWritten, NULL) == 0 || bWritten!=buflen)
+					{
+						errorLog(sformat("Failed to write %d bytes to %s: %u\n", buflen, filename, GetLastError()));
+						err = error_mapper(GetLastError());
+						break;
+					}
+					buflen = 0;
+				}
 			}
 			if (len)	// connection was closed
 			{
@@ -599,14 +577,14 @@ DWORD WINAPI blockServe(LPVOID data){
 				int pnt = 0;
 				bool bPad= true;
 
-                //are we padding or reading memory based on our 'position' in the memory 'file'				
+                //are we padding or reading memory based on our 'position' in the memory 'file'
 				if (bMemory){
                     for(i=0; i<info->number_of_runs; i++) {
                         if ( (info->runs[i].start <= cur_offset.QuadPart) && (nb<=info->runs[i].length)) {
                             bPad=false;  //really read the mem driver
                             //debugLog(sformat("no pad for : %lld, %d ",cur_offset.QuadPart,nb));
                         }
-                    }				    
+                    }
 				}
 
                 if (bMemory){
@@ -616,36 +594,33 @@ DWORD WINAPI blockServe(LPVOID data){
                     }else{
                         debugLog(sformat("Sending mem: %lld,%d",cur_offset.QuadPart,nb));
                 		// seek to 'from'
-                		if (SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == 0xFFFFFFFF)
+                		if (SetFilePointerEx(fh, cur_offset, NULL, FILE_BEGIN) == 0)
                 		{
-                			errorLog(sformat("Error seeking in file %s to position %d,%d (%x%x): %lu\n", filename,
-                				cur_offset.HighPart, cur_offset.LowPart, cur_offset.HighPart, cur_offset.LowPart, GetLastError()));
+                			errorLog(sformat("Error seeking in file %s to position %lld (%llx): %u\n", filename,
+                				cur_offset.QuadPart, cur_offset.QuadPart, GetLastError()));
                 			err = error_mapper(GetLastError());
                 			break;
-                		}                        
+                		}
         				if (ReadFile(fh, buffer, nb, &dummy, NULL) == 0)
         				{
         					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
         					break;
         				}
-                                                
                     }
                     cur_offset.QuadPart+=nb;
                 }else{
-                    
     				// read nb to buffer;
     				if (ReadFile(fh, buffer, nb, &dummy, NULL) == 0)
     				{
-    					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
+    					errorLog(sformat("Failed to read from %s: %u\n", filename, GetLastError()));
     					break;
     				}
-    				if (dummy != (DWORD) nb)
+    				if (dummy != nb)
     				{
-    					errorLog(sformat("Failed to read from %s: %lu\n", filename, GetLastError()));
+    					errorLog(sformat("Failed to read from %s: %u\n", filename, GetLastError()));
     					break;
     				}
                 }
-                
 				// send through socket
 				if (WRITE(sockh, buffer, nb) != nb) // connection was closed
 				{
@@ -663,7 +638,7 @@ DWORD WINAPI blockServe(LPVOID data){
             //requested close
             infoLog("Closed socket.");
             break;
-        }			
+        }
 		else
 		{
 			errorLog(sformat("Unexpected commandtype: %d\n", type));
@@ -675,14 +650,14 @@ DWORD WINAPI blockServe(LPVOID data){
 error:
 	if (fh != NULL && CloseHandle(fh) == 0)
 	{
-		errorLog(sformat("Failed to close handle: %lu\n", GetLastError()));
+		errorLog(sformat("Failed to close handle: %u\n", GetLastError()));
 	}
 
 	closesocket(sockh);
 
 	ExitThread(0);
 
-	return 0;    
+	return 0;
 }
 
 
@@ -701,7 +676,7 @@ int main(int argc, char *argv[])
     ifstream nbdfile;
     int iError;
     size_t found;
-    
+
     while ((ch=getopt(argc,argv,"c:p:f:n:hwdq")) != EOF)
     switch(ch)
     {
@@ -716,7 +691,7 @@ int main(int argc, char *argv[])
             break;
         case 'w':
             allowWrite=true;
-            break;            
+            break;
         case 'p':
             port=atoi(optarg);
             break;
@@ -726,7 +701,7 @@ int main(int argc, char *argv[])
 				partitionNo=-1;
 			}else{
 				partitionNo=atoi(optarg);
-			}            
+			}
             break;
         case 'f':
             nbdfilename=optarg;
@@ -738,11 +713,11 @@ int main(int argc, char *argv[])
             usage(argv[0]);
             return(-1);
     }
-    
+
     if (debug){
         debugFile.open("debug.log");
     }
-    
+
     found=nbdfilename.find("pmem");
     if (found!=string::npos){
        bMemory=true;
@@ -762,7 +737,7 @@ int main(int argc, char *argv[])
             return(-1);
         }
     }
-    
+
     //socket init.
    	SOCKET sSock;
 	WSADATA wsdata;
@@ -785,7 +760,7 @@ int main(int argc, char *argv[])
 	sServer.sin_family = AF_INET;
 	sServer.sin_addr.s_addr = INADDR_ANY;  //listen on any/all IPs.
 	sServer.sin_port=htons(port);
-	
+
 	//socket options
 	int * p_int ;
     p_int = (int*)malloc(sizeof(int));
@@ -793,22 +768,22 @@ int main(int argc, char *argv[])
 
     if( (setsockopt(sSock, SOL_SOCKET, SO_REUSEADDR, (char*)p_int, sizeof(int)) == -1 )||
         (setsockopt(sSock, SOL_SOCKET, SO_KEEPALIVE, (char*)p_int, sizeof(int)) == -1 ) ){
-        errorLog(sformat("Error setting options %lu\n", WSAGetLastError()));
+        errorLog(sformat("Error setting options %u\n", WSAGetLastError()));
         return(-1);
     }
-	
+
 	if (bind(sSock,(LPSOCKADDR) &sServer,sizeof(sServer)) ==SOCKET_ERROR){
         errorLog("Could not bind socket to server");
         return(-1);
     }
-    
+
     //listen and start thread to handle connections
     if (listen(sSock,20)==SOCKET_ERROR){
         errorLog("Error listening on socket");
     }else{
         debugLog("Listening...");
     }
-    
+
     while (1){
         debugLog("Init socket loop");
         SOCKET sClient;
@@ -823,24 +798,17 @@ int main(int argc, char *argv[])
             closesocket(sClient);
         }else if (sClient != INVALID_SOCKET)
 		{
-			infoLog(sformat("Connection made with: %s",inet_ntoa(clientAddr.sin_addr)));            
+			infoLog(sformat("Connection made with: %s",inet_ntoa(clientAddr.sin_addr)));
             DWORD tid;
-			HANDLE th = CreateThread(NULL, 0, blockServe, (void *)sClient, 0, &tid);			
-			
+			HANDLE th = CreateThread(NULL, 0, blockServe, (void *)sClient, 0, &tid);
         }else{
             errorLog("Invalid Socket");
         }
-    
     }
-	
+
 	if (debug){
 	    debugFile.close();
 	}
-	
-	
-	
-	
-	
 
 
 }

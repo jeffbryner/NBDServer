@@ -1,0 +1,30 @@
+# Project: NBDServer
+# Makefile for mingw32 / mingw-w64 under linux
+
+PLATFORMPREFIX = i586-mingw32msvc-
+CPP      = $(PLATFORMPREFIX)g++
+CC       = $(PLATFORMPREFIX)gcc
+WINDRES  = $(PLATFORMPREFIX)windres
+OBJ      = main.o $(RES)
+LINKOBJ  = main.o $(RES)
+LIBS     = -lwsock32 -static 
+INCS     =
+CXXINCS  =
+BIN      = NBDServer.exe
+CXXFLAGS = $(CXXINCS) 
+CFLAGS   = $(INCS) 
+RM       = rm -f
+
+.PHONY: all all-before all-after clean clean-custom
+
+all: all-before $(BIN) all-after
+
+
+clean: clean-custom
+	${RM} $(OBJ) $(BIN)
+
+$(BIN): $(OBJ)
+	$(CPP) $(LINKOBJ) -o $(BIN) $(LIBS)
+
+main.o: main.cpp
+	$(CPP) -c main.cpp -o main.o $(CXXFLAGS)
