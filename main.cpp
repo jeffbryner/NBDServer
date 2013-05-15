@@ -490,7 +490,7 @@ DWORD WINAPI blockServe(LPVOID data){
 		cur_offset = add_li(foffset, from);
 
 		// seek to 'from'
-		if (type!=2 && !bMemory && SetFilePointer(fh, cur_offset.LowPart, &cur_offset.HighPart, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+		if (type!=2 && !bMemory && SetFilePointerEx(fh, cur_offset,NULL, FILE_BEGIN) == 0)
 		{
 			errorLog(sformat("Error seeking in file %s to position %lld (%llx): %u", filename,
 				cur_offset.QuadPart, cur_offset.QuadPart, GetLastError()));
@@ -683,11 +683,6 @@ error:
 }
 
 
-
-
-
-
-
 int main(int argc, char *argv[])
 {
     bool verbose=false;
@@ -831,6 +826,4 @@ int main(int argc, char *argv[])
 	if (debug){
 	    debugFile.close();
 	}
-
-
 }
