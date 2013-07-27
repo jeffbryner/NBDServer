@@ -90,8 +90,6 @@ sformat (const char *fmt, ...)
     return buf;
 }
 
-
-
 void usage(char *prog)
 {
      cout<< prog << " v3.0"<<endl;
@@ -170,7 +168,6 @@ int READ(SOCKET sh, UCHAR *whereto, int howmuch)
 
 	//debugLog(sformat("read: %d bytes requested", howmuch));
 
-
 	while(howmuch > 0)
 	{
 		int nread = recv(sh, (char *)&whereto[pnt], howmuch, 0);
@@ -223,8 +220,6 @@ BOOL getu32(SOCKET sh, ULONG *val)
 	return TRUE;
 }
 
-
-
 BOOL putu32(SOCKET sh, ULONG value)
 {
 	UCHAR buffer[4];
@@ -240,9 +235,6 @@ BOOL putu32(SOCKET sh, ULONG value)
 		return TRUE;
 }
 
-
-
-
 DWORD WINAPI blockServe(LPVOID data){
 	SOCKET sockh = (SOCKET)data;
 	HANDLE fh;
@@ -257,8 +249,6 @@ DWORD WINAPI blockServe(LPVOID data){
     int i;
 
 	// open file 'filename'
-    //	fh = CreateFile(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
     if (bMemory){
        debugLog("opening memory");
        fh=CreateFile(filename,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
@@ -269,12 +259,12 @@ DWORD WINAPI blockServe(LPVOID data){
     }
     else{
 		debugLog("opening read-only");
-		fh = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		fh = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }
 
 	if (fh == INVALID_HANDLE_VALUE)
 	{
-		errorLog(sformat("Error opening file %s: %lu", filename, GetLastError()));
+		errorLog(sformat("Error opening file %s: %u", filename, GetLastError()));
 		goto error;
 	}
 
@@ -285,62 +275,62 @@ DWORD WINAPI blockServe(LPVOID data){
 	//disk, volume, memory or file?
 	if (strnicmp(filename, "\\\\.\\PHYSICALDRIVE", 17) == 0)	/* disk */
 	{
-		DWORD dummy2;
-		char *dummy = (char *)malloc(4096);
-		DRIVE_LAYOUT_INFORMATION *dli = (DRIVE_LAYOUT_INFORMATION *)dummy;
-		if (!dummy)
+		DRIVE_LAYOUT_INFORMATION_EX *dli;
+		DWORD dwBytesReturn = 0;
+		int estimatedPartitionCount = 6;
+		DWORD dwSize = sizeof(DRIVE_LAYOUT_INFORMATION_EX) + estimatedPartitionCount * sizeof(PARTITION_INFORMATION_EX);
+		dli = (DRIVE_LAYOUT_INFORMATION_EX *) new BYTE[dwSize];
+		if (DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0,(LPVOID) dli,dwSize,&dwBytesReturn,NULL)==FALSE)
 		{
-			errorLog("Out of memory!");
-			goto error;
-		}
-		if (DeviceIoControl(fh, IOCTL_DISK_GET_DRIVE_LAYOUT, NULL, 0, (void *)dli, 4096, &dummy2, NULL) == FALSE)
-		{
-			errorLog(sformat("Cannot obtain drive layout: %lu", GetLastError()));
+			errorLog(sformat("Cannot obtain drive layout: %u", GetLastError()));
 			goto error;
 		}
 
-		//dli->PartitionCount is stupid and answers 4 if MBR..count array instead.
-
-		int partitionCount=0;
-		partitionCount=sizeof(dli->PartitionEntry) / sizeof(*dli->PartitionEntry);
-		debugLog(sformat("Partitions %d",partitionCount));
 		if (partitionNo==-1){
-			int i;
-			for (i=0;i <=partitionCount;i++){
-				fsize.QuadPart += (dli -> PartitionEntry[i]).PartitionLength.QuadPart;
+			//return the entire disk, ignoring partition table
+			//set offset to 0 and length to length of disk
+			foffset.QuadPart = 0;
+			//no boundary checks please
+			DWORD boundaryBytesReturn=0;
+			if (DeviceIoControl(fh,FSCTL_ALLOW_EXTENDED_DASD_IO,NULL,0,NULL,0,&boundaryBytesReturn,NULL)){
+				errorLog(sformat("Request no io boundary checks failed. Error: %u",GetLastError));
+			}else{
+				infoLog("Boundary checks turned off.");
 			}
-			debugLog("Gathered length from all partitions");
-			//set offset to 0 and length to length of all partitions
-			foffset = (dli -> PartitionEntry[0]).StartingOffset;
+			//calc disk length:
+			GET_LENGTH_INFORMATION pLength;
+			DWORD dwplSize = sizeof(GET_LENGTH_INFORMATION);
+			DWORD dwplBytesReturn = 0;
+			if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0,(LPVOID)&pLength,dwplSize,&dwplBytesReturn,NULL)){
+				debugLog(sformat("DiskLength: %lld",pLength.Length.QuadPart));
+				fsize.QuadPart=pLength.Length.QuadPart;
+			}else{
+				errorLog(sformat("Cannot determine Disk length. Error: %u", GetLastError()));
+				goto error;
+			}
 		}else{
 			debugLog(sformat("Targeting only partition %d",partitionNo));
 			// find starting offset of partition
 			foffset = (dli -> PartitionEntry[partitionNo]).StartingOffset;
 			fsize  = (dli -> PartitionEntry[partitionNo]).PartitionLength;
+			debugLog(sformat("Partition %d is of type %02x", partitionNo, (dli -> PartitionEntry[partitionNo]).PartitionStyle));
 		}
-
-		debugLog(sformat("Partition %d is of type %02x", partitionNo, (dli -> PartitionEntry[partitionNo]).PartitionType));
 		debugLog(sformat("Offset: %lld (%llx)", foffset.QuadPart, foffset.QuadPart));
 		debugLog(sformat("Length: %lld (%llx)", fsize.QuadPart,  fsize.QuadPart));
-
 	}
 	else if (strnicmp(filename, "\\\\.\\", 4 ) == 0 && !bMemory ) //assume a volume name like \\.\C: or \\.\HarddiskVolume1 
 	{
-		DWORD dummy2;
-		char *dummy = (char *)malloc(4096);
-		GET_LENGTH_INFORMATION *gli = (GET_LENGTH_INFORMATION *)dummy;
-		if (!dummy)
-		{
-			errorLog("Out of memory!");
+		//calc length:
+		GET_LENGTH_INFORMATION pLength;
+		DWORD dwplSize = sizeof(GET_LENGTH_INFORMATION);
+		DWORD dwplBytesReturn = 0;
+		if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0,(LPVOID)&pLength,dwplSize,&dwplBytesReturn,NULL)){
+			debugLog(sformat("VolumeLength: %lld",pLength.Length.QuadPart));
+			fsize.QuadPart=pLength.Length.QuadPart;
+		}else{
+			errorLog(sformat("Cannot determine Volume length. Error: %u", GetLastError()));
 			goto error;
 		}
-		if (DeviceIoControl(fh, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, (void *)gli, 4096, &dummy2, NULL) == FALSE)
-		{
-			errorLog(sformat("Cannot obtain volume layout: %u", GetLastError()));
-			goto error;
-		}
-
-		fsize  = gli -> Length;
 	}
 	else if (bMemory){
          DWORD size;
@@ -355,8 +345,7 @@ DWORD WINAPI blockServe(LPVOID data){
             if(!DeviceIoControl(fh, PMEM_INFO_IOCTRL, NULL, 0, info_buffer, 4096,&size, NULL)) {
                         errorLog("Failed to get memory geometry.");
             goto error;
-            };
-
+            }
             //assume we start at the beginning of the first run.
             //offset.QuadPart=info->runs[0].start;
             //fsize.QuadPart=info->runs[0].length;
@@ -371,9 +360,8 @@ DWORD WINAPI blockServe(LPVOID data){
                      debugLog(sformat("Start 0x%08llX - Length 0x%08llX", info->runs[i]));
                      fsize.QuadPart+=(info->runs[i].start-fsizeoffset)+info->runs[i].length;
                      fsizeoffset=info->runs[i].start+info->runs[i].length;
-            };
+            }
         }
-
    }
 	else													/* plain file */
 	{
@@ -454,9 +442,6 @@ DWORD WINAPI blockServe(LPVOID data){
 			errorLog("Failed to read from socket.");
 			break;
 		}
-
-        //len=ntohl(len);
-
 		handle[8] = 0x00;
 		debugLog(sformat("Request: %s From: %lld Len: %lu ",type?"write:":"read",from.QuadPart,len));
 
@@ -681,7 +666,6 @@ error:
 
 	return 0;
 }
-
 
 int main(int argc, char *argv[])
 {
