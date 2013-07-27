@@ -5,12 +5,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <errno.h>
+#include <winsock2.h>
 #include <windows.h>
 #include <winioctl.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <fstream>
-#include <winsock2.h>
 #include <algorithm>
 #include <stdint.h>
 #include <cstdarg>
@@ -259,7 +259,11 @@ DWORD WINAPI blockServe(LPVOID data){
     }
     else{
 		debugLog("opening read-only");
+<<<<<<< HEAD
 		fh = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+=======
+		fh = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ |FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+>>>>>>> 98da0d09bdfc0f8da55219897214774c110daee9
     }
 
 	if (fh == INVALID_HANDLE_VALUE)
