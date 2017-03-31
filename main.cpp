@@ -92,7 +92,7 @@ sformat (const char *fmt, ...)
 
 void usage(char *prog)
 {
-     cout<< prog << " v3.0"<<endl;
+     cout<< prog << " v3.1"<<endl;
      cout<<" -c     Client IP address to accept connections from"<<endl;
      cout<<" -p     Port to listen on (60000 by default)"<<endl;
      cout<<" -f     File to serve ( \\\\.\\PHYSICALDRIVE0 or \\\\.\\pmem for example)"<<endl;  //escaping \'s should be read as \\.\:
@@ -587,7 +587,7 @@ DWORD WINAPI blockServe(LPVOID data){
                 //are we padding or reading memory based on our 'position' in the memory 'file'
 				if (bMemory){
                     for(i=0; i<info->number_of_runs; i++) {
-                        if ( (info->runs[i].start <= cur_offset.QuadPart) && (nb<=info->runs[i].length)) {
+                        if ((info->runs[i].start <= cur_offset.QuadPart) && (cur_offset.QuadPart <= info->runs[i].start + info->runs[i].length)) {
                             bPad=false;  //really read the mem driver
                             //debugLog(sformat("no pad for : %lld, %d ",cur_offset.QuadPart,nb));
                         }
